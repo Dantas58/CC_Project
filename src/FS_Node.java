@@ -14,11 +14,14 @@ public class FS_Node {
     private ObjectInputStream in;
     private ObjectOutputStream out;
 
+    //private  String node_address;
+
     public FS_Node(){
         
         this.TCP_Port = 9091;
         this.server_address = "localhost";
         this.server_port = 9090;
+        //this.node_address = InetAddress.getLocalHost().getHostAddress(); // + ":" + String.valueOf(TCP_Port);
     }
 
 
@@ -60,6 +63,12 @@ public class FS_Node {
                     System.out.println(final_packet.getCommand());
 
                     break;
+                
+                case "EXIT":
+
+                    exit();
+                    socket.close();
+                    return;
 
                 default:
 
@@ -73,7 +82,7 @@ public class FS_Node {
     public void register() throws IOException{
 
         String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
-        Map<String, List<byte[]>> files = readFilesToMap("/home/zao/Desktop/CC_Project/files");   //tenho de mudar a função
+        Map<String, List<byte[]>> files = readFilesToMap("/home/zao/Desktop/CC_Project/src/files");   //tenho de mudar a função
         Protocol packet = new Protocol("REGISTER", address, files);
 
         byte[] packet_ready = packet.packUp();
@@ -102,11 +111,27 @@ public class FS_Node {
         Map<String, List<byte[]>> files_just_name = new HashMap<>();
         //List<byte[]> lista = new ArrayList<>();
         files_just_name.put(file_name, new ArrayList<>()); 
-        Protocol packet = new Protocol("GET", address, files_just_name); //pensar como mandar a packet para get
+        Protocol packet = new Protocol("GET", address, files_just_name); 
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
         out.flush();
+    }
+
+    public void exit() throws IOException{
+
+        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
+         Map<String, List<byte[]>> place_holder = new HashMap<>();
+        //List<byte[]> lista = new ArrayList<>();
+        place_holder.put("placeHolder", new ArrayList<>());
+
+        Protocol packet = new Protocol("EXIT", address, place_holder);
+        byte[] packet_ready = packet.packUp();
+        out.writeObject(packet_ready);
+        out.flush();
+
+        in.close();
+        out.close();
     }
 
 
