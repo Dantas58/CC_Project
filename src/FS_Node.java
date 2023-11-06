@@ -7,6 +7,7 @@ import java.io.*;
 public class FS_Node {
     
     private int TCP_Port;
+    private String directory;
 
     private String server_address;
     private int server_port;
@@ -16,11 +17,13 @@ public class FS_Node {
 
     //private  String node_address;
 
-    public FS_Node(){
+    public FS_Node(int server_port, String server_address, String directory){
         
-        this.TCP_Port = 9091;
-        this.server_address = "localhost";
-        this.server_port = 9090;
+        this.TCP_Port = 9091;;
+        //this.server_address = "localhost";
+        this.server_address = server_address;
+        this.server_port = server_port;
+        this.directory = directory;
         //this.node_address = InetAddress.getLocalHost().getHostAddress(); // + ":" + String.valueOf(TCP_Port);
     }
 
@@ -60,7 +63,14 @@ public class FS_Node {
                     byte[] received_packet = (byte[]) in.readObject();
                     Protocol final_packet = Protocol.unpack(received_packet);
 
-                    System.out.println(final_packet.getCommand());
+                    if(final_packet.getFiles().isEmpty()) 
+                        System.out.println("Specified file could not be found in any registered Node;");
+
+                    else{
+                        for (String key : final_packet.getFiles().keySet()) {
+                            System.out.println(key + ": " + final_packet.getFiles().get(key) + " blocks");
+                        }
+                    }
 
                     break;
                 
@@ -79,24 +89,28 @@ public class FS_Node {
     }
 
 
-    public void register() throws IOException{
+    public String getAddress() throws IOException{
 
         String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
-        Map<String, List<byte[]>> files = readFilesToMap("/home/zao/Desktop/CC_Project/src/files");   //tenho de mudar a função
+        return address;
+    }
+
+    public void register() throws IOException{
+
+        String address = getAddress();
+
+        Map<String, Integer> files = readFilesToMap(directory);
         Protocol packet = new Protocol("REGISTER", address, files);
 
         byte[] packet_ready = packet.packUp();
-        //int packet_size = packet_ready.length;
-        //out.writeObject(packet_size);
         out.writeObject(packet_ready);
         out.flush();
     }
 
     public void update() throws IOException{
 
-
-        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
-        Map<String, List<byte[]>> updated_files = readFilesToMap("/home/zao/Desktop/CC_Project/files");
+        String address = getAddress();
+        Map<String, Integer> updated_files = readFilesToMap(directory);
 
         Protocol packet = new Protocol("UPDATE", address, updated_files);
 
@@ -107,10 +121,10 @@ public class FS_Node {
 
     public void get(String file_name) throws IOException{
 
-        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
-        Map<String, List<byte[]>> files_just_name = new HashMap<>();
-        //List<byte[]> lista = new ArrayList<>();
-        files_just_name.put(file_name, new ArrayList<>()); 
+        String address = getAddress();
+
+        Map<String, Integer> files_just_name = new HashMap<>();
+        files_just_name.put(file_name, 0); 
         Protocol packet = new Protocol("GET", address, files_just_name); 
 
         byte[] packet_ready = packet.packUp();
@@ -120,10 +134,11 @@ public class FS_Node {
 
     public void exit() throws IOException{
 
-        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
-         Map<String, List<byte[]>> place_holder = new HashMap<>();
-        //List<byte[]> lista = new ArrayList<>();
-        place_holder.put("placeHolder", new ArrayList<>());
+        String address = getAddress();
+
+        // Use a placeholder as there will be no need to send actual file data
+        Map<String, Integer> place_holder = new HashMap<>();
+        place_holder.put("placeHolder", 0);
 
         Protocol packet = new Protocol("EXIT", address, place_holder);
         byte[] packet_ready = packet.packUp();
@@ -134,54 +149,53 @@ public class FS_Node {
         out.close();
     }
 
-
-    public Map<String, List<byte[]>> readFilesToMap(String directoryPath) {
+    public Map<String, Integer> readFilesToMap(String directoryPath){
 
         File directory = new File(directoryPath);
-
-        Map<String, List<byte[]>> fileMap = new HashMap<>();
-
+    
+        Map<String, Integer> fileBlockCounts = new HashMap<>();
+    
         File[] files = directory.listFiles();
-        
+    
         if (files != null) {
-
             for (File file : files) {
                 if (file.isFile()) {
                     String fileName = file.getName();
-                    List<byte[]> fileContent = new ArrayList<>();
-
+    
                     try (FileInputStream fileInputStream = new FileInputStream(file)) {
-                        int bufferSize = 1024; // You can adjust the buffer size as needed
+                        int blockCount = 0;
+                        int bufferSize = 100; 
                         byte[] buffer = new byte[bufferSize];
                         int bytesRead;
-
+    
                         while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                            byte[] data = new byte[bytesRead];
-                            System.arraycopy(buffer, 0, data, 0, bytesRead);
-                            fileContent.add(data);
+                            blockCount++;
                         }
-
-                        fileMap.put(fileName, fileContent);
-
+    
+                        fileBlockCounts.put(fileName, blockCount);
+    
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
             }
         }
-
-        return fileMap;
+    
+        return fileBlockCounts;
     }
-
 
     public static void main(String[] args) throws IOException, ClassNotFoundException {
 
-        //String directory = args[0];
-        //String server_address = args[1];
-        //int server_port = Integer.parseInt(args[2]);
-        //FS_Node node = new FS_Node(directory, server_address, server_port); // para depois
+        if(args.length < 3){
+            System.out.println("Not enough arguments");
+            return;
+        }
 
-        FS_Node node = new FS_Node();
+        String directory = args[0];
+        String server_address = args[1];
+        int server_port = Integer.parseInt(args[2]);
+
+        FS_Node node = new FS_Node(server_port, server_address, directory);
         node.FSTrackerConnection();
     }
 }
