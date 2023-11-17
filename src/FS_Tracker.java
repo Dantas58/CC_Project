@@ -4,7 +4,7 @@ import java.io.*;
 
 public class FS_Tracker {
     
-    private Map<String, Map<String, Integer>> fs_nodes;
+    private Map<String, Map<String, List<Integer>>> fs_nodes;
     private int port;
 
     public FS_Tracker(){
@@ -16,7 +16,7 @@ public class FS_Tracker {
     public void registerNode(Protocol infos){
 
         String node_address = infos.getNodeAddress();
-        Map<String, Integer> files = infos.getFiles();
+        Map<String, List<Integer>> files = infos.getFiles();
 
         fs_nodes.put(node_address, files);
         System.out.println("Node " + node_address + " Registered;");
@@ -25,7 +25,7 @@ public class FS_Tracker {
     public void updateNode(Protocol infos){
 
         String node_address = infos.getNodeAddress();
-        Map<String, Integer> files = infos.getFiles();
+        Map<String, List<Integer>> files = infos.getFiles();
 
         if(fs_nodes.containsKey(node_address)){
 
@@ -37,21 +37,21 @@ public class FS_Tracker {
         }
     }
 
-    public Map<String, Integer> getNodes(Protocol infos){
+    public Map<String, List<Integer>> getNodes(Protocol infos){
 
-        Map<String, Integer> files = infos.getFiles();
+        Map<String, List<Integer>> files = infos.getFiles();
       
         // The sent files have a single key (file name we want to locate) with no blocks
         String file_name = files.keySet().iterator().next();
 
-        Map<String, Integer> node_list = new HashMap<>();
+        Map<String, List<Integer>> node_list = new HashMap<>();
 
         for (String key : fs_nodes.keySet()) {
 
             if(fs_nodes.get(key).containsKey(file_name)){
 
                 // Add node IP as key and blocks from said node as value
-                Integer node_blocks = fs_nodes.get(key).get(file_name);
+                List<Integer> node_blocks = fs_nodes.get(key).get(file_name);
                 node_list.put(key, node_blocks);
             }
         }
@@ -59,7 +59,7 @@ public class FS_Tracker {
         return node_list;
     }
 
-    public byte[] sendNodes(Map<String, Integer> node_list) throws IOException{
+    public byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException{
 
         String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(port);
         Protocol packet = new Protocol("LIST", address, node_list);
@@ -121,12 +121,15 @@ public class FS_Tracker {
                     else if(command.toUpperCase().equals("UPDATE")){
 
                         updateNode(final_packet);
+                        for (String key : final_packet.getFiles().keySet()) {
+                            System.out.println(key);
+                        }
                         out.flush();
                     }
 
                     else if(command.toUpperCase().equals("GET")){
 
-                        Map<String, Integer> packet = getNodes(final_packet);
+                        Map<String, List<Integer>> packet = getNodes(final_packet);
                         byte[] packet_ready = sendNodes(packet);
                         out.writeObject(packet_ready);
                         out.flush();
@@ -135,9 +138,11 @@ public class FS_Tracker {
                     else if(command.toUpperCase().equals("EXIT")){
 
                         System.out.println("Terminating connection with Node ( " + final_packet.getNodeAddress() + " );");
+                        fs_nodes.remove(final_packet.getNodeAddress());
                         in.close();
                         out.close();
                         socket.close();
+                        break;
                     }
             
                 }

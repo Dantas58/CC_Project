@@ -12,6 +12,8 @@ public class FS_Node {
     private String server_address;
     private int server_port;
 
+    private Map<String, List<FileBlock>> files;
+
     private ObjectInputStream in;
     private ObjectOutputStream out;
 
@@ -20,7 +22,6 @@ public class FS_Node {
     public FS_Node(int server_port, String server_address, String directory){
         
         this.TCP_Port = 9091;;
-        //this.server_address = "localhost";
         this.server_address = server_address;
         this.server_port = server_port;
         this.directory = directory;
@@ -35,7 +36,7 @@ public class FS_Node {
         out = new ObjectOutputStream(socket.getOutputStream());
         in = new ObjectInputStream(socket.getInputStream()); 
 
-        System.out.println("FS Trak Protocol connection established with server " + server_address + " on port " + server_port);
+        System.out.println("FS Track Protocol connection established with server " + server_address + " on port " + server_port);
 
         register();
         System.out.println("Node has been Registered in FS Tracker;\n");
@@ -91,7 +92,7 @@ public class FS_Node {
 
     public String getAddress() throws IOException{
 
-        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(TCP_Port);
+        String address = InetAddress.getLocalHost().getHostAddress();// + ":" + String.valueOf(TCP_Port);
         return address;
     }
 
@@ -99,8 +100,8 @@ public class FS_Node {
 
         String address = getAddress();
 
-        Map<String, Integer> files = readFilesToMap(directory);
-        Protocol packet = new Protocol("REGISTER", address, files);
+        this.files = readFilesToMap(directory);
+        Protocol packet = new Protocol("REGISTER", address, generateBlockIdsMap(files));
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
@@ -110,9 +111,9 @@ public class FS_Node {
     public void update() throws IOException{
 
         String address = getAddress();
-        Map<String, Integer> updated_files = readFilesToMap(directory);
+        this.files = readFilesToMap(directory);
 
-        Protocol packet = new Protocol("UPDATE", address, updated_files);
+        Protocol packet = new Protocol("UPDATE", address, generateBlockIdsMap(files));
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
@@ -123,8 +124,8 @@ public class FS_Node {
 
         String address = getAddress();
 
-        Map<String, Integer> files_just_name = new HashMap<>();
-        files_just_name.put(file_name, 0); 
+        Map<String, List<Integer>> files_just_name = new HashMap<>();
+        files_just_name.put(file_name, new ArrayList<Integer>()); 
         Protocol packet = new Protocol("GET", address, files_just_name); 
 
         byte[] packet_ready = packet.packUp();
@@ -137,8 +138,8 @@ public class FS_Node {
         String address = getAddress();
 
         // Use a placeholder as there will be no need to send actual file data
-        Map<String, Integer> place_holder = new HashMap<>();
-        place_holder.put("placeHolder", 0);
+        Map<String, List<Integer>> place_holder = new HashMap<>();
+        place_holder.put("placeHolder", new ArrayList<>());
 
         Protocol packet = new Protocol("EXIT", address, place_holder);
         byte[] packet_ready = packet.packUp();
@@ -149,7 +150,9 @@ public class FS_Node {
         out.close();
     }
 
-    public Map<String, Integer> readFilesToMap(String directoryPath){
+    /* 
+    public Map<String, Integer> readFilesToMap(String directoryPath){    }
+
 
         File directory = new File(directoryPath);
     
@@ -169,7 +172,8 @@ public class FS_Node {
                         int bytesRead;
     
                         while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                            blockCount++;
+                            blockCount++;fileName    }
+
                         }
     
                         fileBlockCounts.put(fileName, blockCount);
@@ -182,6 +186,80 @@ public class FS_Node {
         }
     
         return fileBlockCounts;
+    }
+*/
+
+    public Map<String, List<FileBlock>> readFilesToMap(String directoryPath) {
+        File directory = new File(directoryPath);
+        Map<String, List<FileBlock>> fileBlocksMap = new HashMap<>();
+
+        File[] files = directory.listFiles();
+
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()) {
+                    String fileName = file.getName();
+
+                    try (FileInputStream fileInputStream = new FileInputStream(file)) {
+                        int blockId = 0;
+                        int bufferSize = 100; 
+                        byte[] buffer = new byte[bufferSize];
+                        int bytesRead;
+
+                        List<FileBlock> fileBlocks = new ArrayList<>();
+
+                        while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+                            FileBlock fileBlock = new FileBlock(blockId, buffer.clone());
+                            fileBlocks.add(fileBlock);
+                            blockId++;
+                        }
+
+                        fileBlocksMap.put(fileName, fileBlocks);
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
+        return fileBlocksMap;
+    }
+
+    public Map<String, List<Integer>> generateBlockIdsMap(Map<String, List<FileBlock>> fileBlocksMap) {
+        Map<String, List<Integer>> blockIdsMap = new HashMap<>();
+
+        for (Map.Entry<String, List<FileBlock>> entry : fileBlocksMap.entrySet()) {
+            String fileName = entry.getKey();
+            List<FileBlock> fileBlocks = entry.getValue();
+            List<Integer> blockIds = new ArrayList<>();
+
+            for (FileBlock fileBlock : fileBlocks) {
+                blockIds.add(fileBlock.getBlockId());
+            }
+
+            blockIdsMap.put(fileName, blockIds);
+        }
+
+        return blockIdsMap;
+    }
+
+    public class FileBlock {
+        private Integer blockId;
+        private byte[] data;
+    
+        public FileBlock(Integer blockId, byte[] data) {
+            this.blockId = blockId;
+            this.data = data;
+        }
+    
+        public Integer getBlockId() {
+            return blockId;
+        }
+    
+        public byte[] getData() {
+            return data;
+        }
     }
 
     public static void main(String[] args) throws IOException, ClassNotFoundException {
