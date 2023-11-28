@@ -25,18 +25,6 @@ public class Track_Packet {
         return files;
     }
 
-    public void setCommand(String command){
-        this.command = command;
-    }
-
-    public void setNodeAddress(String nodeAddress){
-        this.nodeAddress = nodeAddress;
-    }
-
-    public void setFiles(Map<String, List<Integer>> files){
-        this.files = files;
-    }
-
     public byte[] packUp() throws IOException {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
     

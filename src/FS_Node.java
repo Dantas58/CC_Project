@@ -239,13 +239,14 @@ public class FS_Node {
 
                         if (received_packet.getChecksum() == -1) {
                             // This is a request packet
-                            //handleRequest(received_packet);
+                            send(packet.getAddress().toString(), received_packet.getFileName(), received_packet.getBlockId(), false);
                         } else if (received_packet.getChecksum() == calcChecksum(received_packet.getBlockData())) {
                             // This is a data packet and the checksum is correct
                             //storeReceivedBlock(received_packet);
                         } else {
                             // This is a data packet but the checksum is incorrect
                             System.err.println("Checksum mismatch for block " + received_packet.getBlockId());
+                            send(packet.getAddress().toString(), received_packet.getFileName(), received_packet.getBlockId(), true);
                         }
                         
                     } catch (IOException e) {
@@ -283,12 +284,13 @@ public class FS_Node {
 
             switch (command) {
 
-                case "UPDATE":
+                case "UPDATE":{
 
                     update();
                     break;
-
-                case "GET":
+                }
+                
+                case "GET": {
 
                     System.out.println("Choose file to locate:");
                     String file_name = scanner.nextLine();
@@ -307,18 +309,36 @@ public class FS_Node {
                     }
 
                     break;
+                }
 
-                case "TRANSFER":
+                case "TRANSFER": {
 
                     System.out.println("Choose file to transfer: ");
-                    String name = scanner.nextLine();
-                    //transfer(name);
+                    String file_name = scanner.nextLine();
 
-                case "EXIT":
+                    get(file_name);
+
+                    byte[] received_packet = (byte[]) in.readObject();
+                    Track_Packet final_packet = Track_Packet.unpack(received_packet);
+
+                    if (final_packet.getFiles().isEmpty())
+                        System.out.println("Specified file could not be found in any registered Node;");
+
+                    else {
+                        for(int id = 0; id < final_packet.getFiles().get(file_name).size(); id++) { //confirmar que começa em 0
+                            //send(findBestNode(), file_name, id, true);
+                        }       
+                    }
+
+                    break;
+                }
+
+
+                case "EXIT": {
 
                     exit();
-                    // tcp_socket.close();
                     return;
+                }
 
                 default:
 
