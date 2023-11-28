@@ -11,7 +11,6 @@ public class FS_Node {
 
 
     private final String directory;
-
     private final String server_address;
     private final int server_port;
 
@@ -54,6 +53,12 @@ public class FS_Node {
         }
     }
 
+    private FileBlock findBlock(List<FileBlock> blocks, int id) {
+        return blocks.stream()
+            .filter(block -> block.getBlockId().equals(id))
+            .findFirst()
+            .orElse(null);
+    }
 
     public String getAddress() throws IOException {
 
@@ -61,7 +66,7 @@ public class FS_Node {
         return address;
     }
 
-    public void register() throws IOException {
+    private void register() throws IOException {
 
         String address = getAddress();
 
@@ -75,7 +80,7 @@ public class FS_Node {
         System.out.println("Node has been Registered in FS Tracker;\n");
     }
 
-    public void update() throws IOException {
+    private void update() throws IOException {
 
         String address = getAddress();
         this.files = readFilesToMap(directory);
@@ -87,7 +92,7 @@ public class FS_Node {
         out.flush();
     }
 
-    public void get(String file_name) throws IOException {
+    private void get(String file_name) throws IOException {
 
         String address = getAddress();
 
@@ -100,7 +105,7 @@ public class FS_Node {
         out.flush();
     }
 
-    public void exit() throws IOException {
+    private void exit() throws IOException {
 
         String address = getAddress();
         running = false;
@@ -125,14 +130,22 @@ public class FS_Node {
         out.close();
     }
 
-    public void request(String address, String file_name, int block_id){
+    private void send(String address, String file_name, int block_id, boolean is_request){
         try {
 
             DatagramSocket socket = new DatagramSocket();
             InetAddress address_final = InetAddress.getByName(address);
+            Transfer_Packet packet;
 
-            // It's a request == no need for block data to be sent + checksum -1 to represent a request 
-            Transfer_Packet packet = new Transfer_Packet(file_name, block_id, new byte[0], -1);
+            if(is_request){
+                // It's a request == no need for block data to be sent + checksum -1 to represent a request 
+                packet = new Transfer_Packet(file_name, block_id, new byte[0], -1);
+            }
+            else{
+                byte[] block_data = findBlock(files.get(file_name), block_id).getData();
+                long checksum = calcChecksum(block_data);
+                packet = new Transfer_Packet(file_name, block_id, block_data, checksum);
+            }
 
             byte[] packet_ready = packet.packUpTransfer();
 
@@ -202,13 +215,13 @@ public class FS_Node {
         return blockIdsMap;
     }
 
-    public long calcChecksum(byte[] data) {
+    private long calcChecksum(byte[] data) {
         CRC32 crc32 = new CRC32();
         crc32.update(data);
         return crc32.getValue();
     }
 
-    public void setupPeer() {
+    private void setupPeer() {
 
         try {
             udp_socket = new DatagramSocket(9090);
@@ -227,7 +240,7 @@ public class FS_Node {
                         if (received_packet.getChecksum() == -1) {
                             // This is a request packet
                             //handleRequest(received_packet);
-                        } else if (received_packet.getChecksum() == calcChecksum(received_packet.getData())) {
+                        } else if (received_packet.getChecksum() == calcChecksum(received_packet.getBlockData())) {
                             // This is a data packet and the checksum is correct
                             //storeReceivedBlock(received_packet);
                         } else {
@@ -247,7 +260,7 @@ public class FS_Node {
         }
     }
 
-    public void setupTrackerConnection() throws IOException, ClassNotFoundException {
+    private void setupTrackerConnection() throws IOException, ClassNotFoundException {
 
         tcp_socket = new Socket(server_address, server_port);
         out = new ObjectOutputStream(tcp_socket.getOutputStream());
@@ -259,7 +272,7 @@ public class FS_Node {
         register();
     }
 
-    public void commandHandler() throws IOException, ClassNotFoundException {
+    private void commandHandler() throws IOException, ClassNotFoundException {
 
         Scanner scanner = new Scanner(System.in);
 
@@ -297,7 +310,7 @@ public class FS_Node {
 
                 case "TRANSFER":
 
-                    System.out.println("Choose file to transer: ");
+                    System.out.println("Choose file to transfer: ");
                     String name = scanner.nextLine();
                     //transfer(name);
 

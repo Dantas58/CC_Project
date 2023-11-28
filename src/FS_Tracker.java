@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.stream.Collectors;
 import java.net.*;
 import java.io.*;
 
@@ -13,7 +14,7 @@ public class FS_Tracker {
         this.port = 9090;
     }
 
-    public void registerNode(Track_Packet infos) {
+    private void registerNode(Track_Packet infos) {
 
         String node_address = infos.getNodeAddress();
         Map<String, List<Integer>> files = infos.getFiles();
@@ -22,7 +23,7 @@ public class FS_Tracker {
         System.out.println("Node " + node_address + " Registered;");
     }
 
-    public void updateNode(Track_Packet infos) {
+    private void updateNode(Track_Packet infos) {
 
         String node_address = infos.getNodeAddress();
         Map<String, List<Integer>> files = infos.getFiles();
@@ -31,34 +32,26 @@ public class FS_Tracker {
 
             fs_nodes.put(node_address, files);
             System.out.println("Node " + node_address + " Updated;");
+            
         } else {
             System.out.println("Specified Node (" + node_address + ") does not exist;");
         }
     }
 
-    public Map<String, List<Integer>> getNodes(Track_Packet infos) {
+    private Map<String, List<Integer>> getNodes(Track_Packet infos) {
 
         Map<String, List<Integer>> files = infos.getFiles();
-
-        // The sent files have a single key (file name we want to locate)
         String file_name = files.keySet().iterator().next();
 
-        Map<String, List<Integer>> node_list = new HashMap<>();
-
-        for (String key : fs_nodes.keySet()) {
-
-            if (fs_nodes.get(key).containsKey(file_name)) {
-
-                // Add node IP as key and blocks from said node as value
-                List<Integer> node_blocks = fs_nodes.get(key).get(file_name);
-                node_list.put(key, node_blocks);
-            }
-        }
-
-        return node_list;
+        return fs_nodes.entrySet().stream()
+                                  .filter(entry -> entry.getValue().containsKey(file_name))
+                                  .collect(Collectors.toMap(
+                                                            Map.Entry::getKey,
+                                                            entry -> entry.getValue().get(file_name)
+                                                           ));
     }
 
-    public byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
+    private byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
 
         String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(port);
         Track_Packet packet = new Track_Packet("LIST", address, node_list);
@@ -67,7 +60,7 @@ public class FS_Tracker {
         return packet_ready;
     }
 
-    public void start() throws IOException {
+    private void start() throws IOException {
 
         ServerSocket serverSocket = new ServerSocket(port);
         System.out.println("FS_Tracker is running. Listening on port " + port);

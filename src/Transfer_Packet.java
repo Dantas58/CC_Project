@@ -10,13 +10,13 @@ public class Transfer_Packet {
     
     private String file_name;
     private Integer block_id;
-    private byte[] data;
+    private byte[] block_data;
     private long checksum;
 
     public Transfer_Packet(String file_name, Integer block_id, byte[] data, long checksum) {
         this.file_name = file_name;
         this.block_id = block_id;
-        this.data = data;
+        this.block_data = data;
         this.checksum = checksum;
     }
 
@@ -28,8 +28,8 @@ public class Transfer_Packet {
         return block_id;
     }
 
-    public byte[] getData() {
-        return data;
+    public byte[] getBlockData() {
+        return block_data;
     }
 
     public long getChecksum() {
@@ -50,7 +50,7 @@ public class Transfer_Packet {
         byteArrayOutputStream.write(ByteBuffer.allocate(4).putInt(block_id).array());
 
         // Pack data
-        byte[] data = this.data;
+        byte[] data = this.block_data;
         int dataSize = data.length;
         byteArrayOutputStream.write(ByteBuffer.allocate(4).putInt(dataSize).array());
         byteArrayOutputStream.write(data);
