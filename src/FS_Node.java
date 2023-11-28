@@ -4,6 +4,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.*;
+import java.util.zip.CRC32;
 import java.io.*;
 
 public class FS_Node {
@@ -43,7 +44,7 @@ public class FS_Node {
         String address = getAddress();
 
         this.files = readFilesToMap(directory);
-        Protocol packet = new Protocol("REGISTER", address, generateBlockIdsMap(files));
+        Track_Packet packet = new Track_Packet("REGISTER", address, generateBlockIdsMap(files));
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
@@ -57,7 +58,7 @@ public class FS_Node {
         String address = getAddress();
         this.files = readFilesToMap(directory);
 
-        Protocol packet = new Protocol("UPDATE", address, generateBlockIdsMap(files));
+        Track_Packet packet = new Track_Packet("UPDATE", address, generateBlockIdsMap(files));
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
@@ -70,31 +71,13 @@ public class FS_Node {
 
         Map<String, List<Integer>> files_just_name = new HashMap<>();
         files_just_name.put(file_name, new ArrayList<Integer>());
-        Protocol packet = new Protocol("GET", address, files_just_name);
+        Track_Packet packet = new Track_Packet("GET", address, files_just_name);
 
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
         out.flush();
     }
 
-    /*
-     * public void exit() throws IOException {
-     * 
-     * String address = getAddress();
-     * 
-     * // Use a placeholder as there will be no need to send actual file information
-     * Map<String, List<Integer>> place_holder = new HashMap<>();
-     * place_holder.put("placeHolder", new ArrayList<>());
-     * 
-     * Protocol packet = new Protocol("EXIT", address, place_holder);
-     * byte[] packet_ready = packet.packUp();
-     * out.writeObject(packet_ready);
-     * out.flush();
-     * 
-     * in.close();
-     * out.close();
-     * }
-     */
     public void exit() throws IOException {
         String address = getAddress();
 
@@ -102,22 +85,18 @@ public class FS_Node {
         Map<String, List<Integer>> placeHolder = new HashMap<>();
         placeHolder.put("placeHolder", new ArrayList<>());
 
-        Protocol packet = new Protocol("EXIT", address, placeHolder);
+        Track_Packet packet = new Track_Packet("EXIT", address, placeHolder);
         byte[] packetReady = packet.packUp();
-
-        // Send the exit packet over TCP
+        
         out.writeObject(packetReady);
         out.flush();
 
-        // Close TCP socket
         tcp_socket.close();
 
-        // Close UDP socket (if it's open)
         if (udp_socket != null && !udp_socket.isClosed()) {
             udp_socket.close();
         }
 
-        // Close input and output streams
         in.close();
         out.close();
     }
@@ -197,31 +176,41 @@ public class FS_Node {
         return blockIdsMap;
     }
 
+    public long calcChecksum(byte[] data) {
+        CRC32 crc32 = new CRC32();
+        crc32.update(data);
+        return crc32.getValue();
+    }
+
     public void setupPeer() {
 
-        final int UDP_PORT = 9090;
-        final int BUFFER_SIZE = 1024;
-
         try {
-            DatagramSocket udp_socket = new DatagramSocket(UDP_PORT);
+            udp_socket = new DatagramSocket(9090);
 
-            System.out.println("Listening for new UDP connections on port " + UDP_PORT);
-
-            while (true) {
-
-                byte[] buffer = new byte[BUFFER_SIZE];
-                DatagramPacket packet = new DatagramPacket(buffer, BUFFER_SIZE);
-
-                udp_socket.receive(packet);
-
-                // Process the received data (e.g., handle the command or message)
-                String receivedData = new String(packet.getData(), 0, packet.getLength());
-                System.out.println("Received from " + packet.getAddress() + ": " + receivedData);
-
-                // You can spawn a new thread or handle the received data as needed
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("FS_Transfer Protocol: Listening on Port 9090;");
+            
+            new Thread(() -> {
+                while (true) {
+                    byte[] buffer = new byte[2048];
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                    try {
+                        udp_socket.receive(packet);
+                        /* 
+                        //Transfer_packet receivedPacket = Transfer_packet.deserialize(buffer);
+                        if (receivedPacket.verifyChecksum(receivedPacket.getChecksum())) {
+                            storeReceivedBlock(receivedPacket);
+                        } else {
+                            System.err.println("Checksum mismatch for block " + receivedPacket.getBlockNumber());
+                        }
+                        */
+                    } catch (IOException e) {
+                        System.err.println("Error receiving UDP packet: " + e.getMessage());
+                    }
+                }
+            }).start();
+            
+        } catch (SocketException e) {
+            System.err.println("Erro ao abrir o socket UDP: " + e.getMessage());
         }
     }
 
@@ -260,7 +249,7 @@ public class FS_Node {
                     get(file_name);
 
                     byte[] received_packet = (byte[]) in.readObject();
-                    Protocol final_packet = Protocol.unpack(received_packet);
+                    Track_Packet final_packet = Track_Packet.unpack(received_packet);
 
                     if (final_packet.getFiles().isEmpty())
                         System.out.println("Specified file could not be found in any registered Node;");
@@ -272,6 +261,12 @@ public class FS_Node {
                     }
 
                     break;
+
+                case "TRANSFER":
+
+                    System.out.println("Choose file to transer: ");
+                    String name = scanner.nextLine();
+                    //transfer(name);
 
                 case "EXIT":
 
