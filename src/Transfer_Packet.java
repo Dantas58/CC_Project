@@ -61,7 +61,7 @@ public class Transfer_Packet {
         return byteArrayOutputStream.toByteArray();
     }
 
-    public Transfer_Packet unpackTransfer (byte[] transfer_packet) throws IOException {
+    public static Transfer_Packet unpackTransfer (byte[] transfer_packet) throws IOException {
 
         ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(transfer_packet);
         DataInputStream dataInputStream = new DataInputStream(byteArrayInputStream);

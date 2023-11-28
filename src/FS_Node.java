@@ -9,11 +9,11 @@ import java.io.*;
 
 public class FS_Node {
 
-    // private final int TCP_Port = 9091;
-    private String directory;
 
-    private String server_address;
-    private int server_port;
+    private final String directory;
+
+    private final String server_address;
+    private final int server_port;
 
     private Map<String, List<FileBlock>> files;
 
@@ -22,6 +22,8 @@ public class FS_Node {
 
     private Socket tcp_socket;
     private DatagramSocket udp_socket;
+
+    private volatile boolean running = true;
 
     public FS_Node(int server_port, String server_address, String directory) {
 
@@ -32,6 +34,26 @@ public class FS_Node {
         // this.node_address = InetAddress.getLocalHost().getHostAddress(); // + ":" +
         // String.valueOf(TCP_Port);
     }
+
+    public class FileBlock {
+
+        private Integer Id;
+        private byte[] data;
+
+        public FileBlock(Integer blockId, byte[] data) {
+            this.Id = blockId;
+            this.data = data;
+        }
+
+        public Integer getBlockId() {
+            return Id;
+        }
+
+        public byte[] getData() {
+            return data;
+        }
+    }
+
 
     public String getAddress() throws IOException {
 
@@ -79,7 +101,9 @@ public class FS_Node {
     }
 
     public void exit() throws IOException {
+
         String address = getAddress();
+        running = false;
 
         // Use a placeholder as there will be no need to send actual file information
         Map<String, List<Integer>> placeHolder = new HashMap<>();
@@ -101,22 +125,24 @@ public class FS_Node {
         out.close();
     }
 
-    public class FileBlock {
+    public void request(String address, String file_name, int block_id){
+        try {
 
-        private Integer Id;
-        private byte[] data;
+            DatagramSocket socket = new DatagramSocket();
+            InetAddress address_final = InetAddress.getByName(address);
 
-        public FileBlock(Integer blockId, byte[] data) {
-            this.Id = blockId;
-            this.data = data;
-        }
+            // It's a request == no need for block data to be sent + checksum -1 to represent a request 
+            Transfer_Packet packet = new Transfer_Packet(file_name, block_id, new byte[0], -1);
 
-        public Integer getBlockId() {
-            return Id;
-        }
+            byte[] packet_ready = packet.packUpTransfer();
 
-        public byte[] getData() {
-            return data;
+            DatagramPacket packet_final = new DatagramPacket(packet_ready, packet_ready.length, address_final, 9090);
+    
+            socket.send(packet_final);
+            socket.close();
+
+        } catch (Exception e) {
+            System.err.println("Error sending UDP packet: " + e.getMessage());
         }
     }
 
@@ -190,27 +216,34 @@ public class FS_Node {
             System.out.println("FS_Transfer Protocol: Listening on Port 9090;");
             
             new Thread(() -> {
-                while (true) {
+                while (running) {
                     byte[] buffer = new byte[2048];
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     try {
                         udp_socket.receive(packet);
-                        /* 
-                        //Transfer_packet receivedPacket = Transfer_packet.deserialize(buffer);
-                        if (receivedPacket.verifyChecksum(receivedPacket.getChecksum())) {
-                            storeReceivedBlock(receivedPacket);
+                        
+                        Transfer_Packet received_packet = Transfer_Packet.unpackTransfer(packet.getData());
+
+                        if (received_packet.getChecksum() == -1) {
+                            // This is a request packet
+                            //handleRequest(received_packet);
+                        } else if (received_packet.getChecksum() == calcChecksum(received_packet.getData())) {
+                            // This is a data packet and the checksum is correct
+                            //storeReceivedBlock(received_packet);
                         } else {
-                            System.err.println("Checksum mismatch for block " + receivedPacket.getBlockNumber());
+                            // This is a data packet but the checksum is incorrect
+                            System.err.println("Checksum mismatch for block " + received_packet.getBlockId());
                         }
-                        */
+                        
                     } catch (IOException e) {
-                        System.err.println("Error receiving UDP packet: " + e.getMessage());
+                        if(running)
+                            System.err.println("Error receiving UDP packet: " + e.getMessage());
                     }
                 }
             }).start();
             
         } catch (SocketException e) {
-            System.err.println("Erro ao abrir o socket UDP: " + e.getMessage());
+            System.err.println("Error opening UDP Socket: " + e.getMessage());
         }
     }
 

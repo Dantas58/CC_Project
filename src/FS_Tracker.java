@@ -13,7 +13,7 @@ public class FS_Tracker {
         this.port = 9090;
     }
 
-    public void registerNode(Protocol infos) {
+    public void registerNode(Track_Packet infos) {
 
         String node_address = infos.getNodeAddress();
         Map<String, List<Integer>> files = infos.getFiles();
@@ -22,7 +22,7 @@ public class FS_Tracker {
         System.out.println("Node " + node_address + " Registered;");
     }
 
-    public void updateNode(Protocol infos) {
+    public void updateNode(Track_Packet infos) {
 
         String node_address = infos.getNodeAddress();
         Map<String, List<Integer>> files = infos.getFiles();
@@ -36,7 +36,7 @@ public class FS_Tracker {
         }
     }
 
-    public Map<String, List<Integer>> getNodes(Protocol infos) {
+    public Map<String, List<Integer>> getNodes(Track_Packet infos) {
 
         Map<String, List<Integer>> files = infos.getFiles();
 
@@ -61,7 +61,7 @@ public class FS_Tracker {
     public byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
 
         String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(port);
-        Protocol packet = new Protocol("LIST", address, node_list);
+        Track_Packet packet = new Track_Packet("LIST", address, node_list);
 
         byte[] packet_ready = packet.packUp();
         return packet_ready;
@@ -101,7 +101,7 @@ public class FS_Tracker {
                 while (true) {
 
                     byte[] received_packet = (byte[]) in.readObject();
-                    Protocol final_packet = Protocol.unpack(received_packet);
+                    Track_Packet final_packet = Track_Packet.unpack(received_packet);
 
                     String command = final_packet.getCommand();
 
