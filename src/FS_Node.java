@@ -130,7 +130,7 @@ public class FS_Node {
         out.close();
     }
 
-    private void send(String address, String file_name, int block_id, boolean is_request){
+    private void send(String address, String file_name, int block_id, int total_blocks, boolean is_request){
         try {
 
             DatagramSocket socket = new DatagramSocket();
@@ -139,12 +139,12 @@ public class FS_Node {
 
             if(is_request){
                 // It's a request == no need for block data to be sent + checksum -1 to represent a request 
-                packet = new Transfer_Packet(file_name, block_id, new byte[0], -1);
+                packet = new Transfer_Packet(file_name, block_id, new byte[0], total_blocks, -1);
             }
             else{
                 byte[] block_data = findBlock(files.get(file_name), block_id).getData();
                 long checksum = calcChecksum(block_data);
-                packet = new Transfer_Packet(file_name, block_id, block_data, checksum);
+                packet = new Transfer_Packet(file_name, block_id, block_data, total_blocks, checksum);
             }
 
             byte[] packet_ready = packet.packUpTransfer();
@@ -156,6 +156,47 @@ public class FS_Node {
 
         } catch (Exception e) {
             System.err.println("Error sending UDP packet: " + e.getMessage());
+        }
+    }
+
+    private void saveBlock(Transfer_Packet packet){
+
+        String file_name = packet.getFileName();
+        byte[] block_data = packet.getBlockData();
+        int block_id = packet.getBlockId();
+
+        FileBlock new_block = new FileBlock(block_id, block_data);
+
+        if(this.files.containsKey(file_name)){
+
+            this.files.get(file_name).add(new_block);
+            Collections.sort(this.files.get(file_name), Comparator.comparingInt(FileBlock::getBlockId)); 
+        }
+        else{
+
+            List<FileBlock> blocks = new ArrayList<>();
+            blocks.add(new_block);
+            this.files.put(file_name, blocks);
+        }
+    }
+
+    private void saveToFile(String fileName) throws IOException {
+        List<FileBlock> blocks = this.files.get(fileName);
+        if (blocks != null) {
+            File file = new File(this.directory, fileName);
+            try (FileOutputStream out = new FileOutputStream(file)) {
+                for (FileBlock block : blocks) {
+                    out.write(block.getData());
+                }
+            }
+        }
+    }
+
+    private void checkBlocks(String fileName, int totalBlocks) throws IOException {
+        List<FileBlock> blocks = this.files.get(fileName);
+        if (blocks != null && blocks.size() == totalBlocks) {
+            saveToFile(fileName);
+            update();
         }
     }
 
@@ -237,16 +278,22 @@ public class FS_Node {
                         
                         Transfer_Packet received_packet = Transfer_Packet.unpackTransfer(packet.getData());
 
+                        String address = packet.getAddress().toString();
+                        String file_name = received_packet.getFileName();
+                        int block_id = received_packet.getBlockId();
+                        int total_blocks = received_packet.getTotalBlocks();
+
                         if (received_packet.getChecksum() == -1) {
                             // This is a request packet
-                            send(packet.getAddress().toString(), received_packet.getFileName(), received_packet.getBlockId(), false);
+                            send(address, file_name, block_id, total_blocks, false);
                         } else if (received_packet.getChecksum() == calcChecksum(received_packet.getBlockData())) {
                             // This is a data packet and the checksum is correct
-                            //storeReceivedBlock(received_packet);
+                            saveBlock(received_packet);
+                            checkBlocks(directory, total_blocks);
                         } else {
                             // This is a data packet but the checksum is incorrect
                             System.err.println("Checksum mismatch for block " + received_packet.getBlockId());
-                            send(packet.getAddress().toString(), received_packet.getFileName(), received_packet.getBlockId(), true);
+                            send(address, file_name, block_id, total_blocks, true);
                         }
                         
                     } catch (IOException e) {
@@ -277,7 +324,7 @@ public class FS_Node {
 
         Scanner scanner = new Scanner(System.in);
 
-        while (true) {
+        while (running) {
 
             System.out.println("Waiting for a command:");
             String command = (scanner.nextLine()).toUpperCase();
@@ -325,8 +372,13 @@ public class FS_Node {
                         System.out.println("Specified file could not be found in any registered Node;");
 
                     else {
-                        for(int id = 0; id < final_packet.getFiles().get(file_name).size(); id++) { //confirmar que começa em 0
-                            //send(findBestNode(), file_name, id, true);
+                        int total_ids = final_packet.getFiles().values().stream()
+                                                                        .mapToInt(List::size)
+                                                                        .max()
+                                                                        .orElse(0);  // default value if no maximum is found
+
+                        for(int id = 0; id < total_ids; id++) { //confirmar que começa em 0
+                            //send(findBestNode(), file_name, id, total_ids, true);
                         }       
                     }
 
@@ -343,7 +395,6 @@ public class FS_Node {
                 default:
 
                     System.out.println("Error: command is not valid;");
-
             }
         }
     }

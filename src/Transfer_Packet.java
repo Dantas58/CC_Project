@@ -1,22 +1,19 @@
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
+import java.io.*;
 
 public class Transfer_Packet {
     
     private String file_name;
     private Integer block_id;
     private byte[] block_data;
+    private int total_blocks;
     private long checksum;
 
-    public Transfer_Packet(String file_name, Integer block_id, byte[] data, long checksum) {
+    public Transfer_Packet(String file_name, Integer block_id, byte[] data, int total_blocks, long checksum) {
         this.file_name = file_name;
         this.block_id = block_id;
         this.block_data = data;
+        this.total_blocks = total_blocks;
         this.checksum = checksum;
     }
 
@@ -30,6 +27,10 @@ public class Transfer_Packet {
 
     public byte[] getBlockData() {
         return block_data;
+    }
+
+    public int getTotalBlocks(){
+        return total_blocks;
     }
 
     public long getChecksum() {
@@ -55,6 +56,8 @@ public class Transfer_Packet {
         byteArrayOutputStream.write(ByteBuffer.allocate(4).putInt(dataSize).array());
         byteArrayOutputStream.write(data);
 
+        byteArrayOutputStream.write(ByteBuffer.allocate(4).putInt(total_blocks).array());
+
         // Pack checksum
         byteArrayOutputStream.write(ByteBuffer.allocate(8).putLong(checksum).array());
     
@@ -77,9 +80,11 @@ public class Transfer_Packet {
         byte[] data = new byte[dataSize];
         dataInputStream.readFully(data);
 
+        int total_blocks = dataInputStream.readInt();
+
         long checksum = dataInputStream.readLong();
 
-        return new Transfer_Packet(fileName, blockId, data, checksum);
+        return new Transfer_Packet(fileName, blockId, data, total_blocks, checksum);
     }
 }
 

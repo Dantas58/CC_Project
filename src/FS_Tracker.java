@@ -32,7 +32,7 @@ public class FS_Tracker {
 
             fs_nodes.put(node_address, files);
             System.out.println("Node " + node_address + " Updated;");
-            
+
         } else {
             System.out.println("Specified Node (" + node_address + ") does not exist;");
         }
@@ -47,13 +47,12 @@ public class FS_Tracker {
                                   .filter(entry -> entry.getValue().containsKey(file_name))
                                   .collect(Collectors.toMap(
                                                             Map.Entry::getKey,
-                                                            entry -> entry.getValue().get(file_name)
-                                                           ));
+                                                            entry -> entry.getValue().get(file_name)));
     }
 
     private byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
 
-        String address = InetAddress.getLocalHost().getHostAddress() + ":" + String.valueOf(port);
+        String address = InetAddress.getLocalHost().getHostAddress();
         Track_Packet packet = new Track_Packet("LIST", address, node_list);
 
         byte[] packet_ready = packet.packUp();
