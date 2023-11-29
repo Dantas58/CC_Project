@@ -4,6 +4,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.io.*;
 
@@ -90,6 +91,18 @@ public class FS_Node {
         byte[] packet_ready = packet.packUp();
         out.writeObject(packet_ready);
         out.flush();
+    }
+
+    private void updateBlocks() throws IOException{
+
+        String address = getAddress();
+        
+        Track_Packet packet = new Track_Packet("UPDATE", address, generateBlockIdsMap(files));
+
+        byte[] packet_ready = packet.packUp();
+        out.writeObject(packet_ready);
+        out.flush();
+
     }
 
     private void get(String file_name) throws IOException {
@@ -196,7 +209,7 @@ public class FS_Node {
         List<FileBlock> blocks = this.files.get(fileName);
         if (blocks != null && blocks.size() == totalBlocks) {
             saveToFile(fileName);
-            update();
+            updateBlocks();
         }
     }
 
@@ -372,14 +385,20 @@ public class FS_Node {
                         System.out.println("Specified file could not be found in any registered Node;");
 
                     else {
-                        int total_ids = final_packet.getFiles().values().stream()
-                                                                        .mapToInt(List::size)
-                                                                        .max()
-                                                                        .orElse(0);  // default value if no maximum is found
 
-                        for(int id = 0; id < total_ids; id++) { //confirmar que começa em 0
-                            //send(findBestNode(), file_name, id, total_ids, true);
-                        }       
+                        int total_ids = final_packet.getFiles().values().stream()
+                            .mapToInt(List::size)
+                            .max()
+                            .orElse(0);  // default value if no maximum is found
+
+                            for (int id = 0; id < total_ids; id++) {
+                                for (Map.Entry<String, List<Integer>> entry : final_packet.getFiles().entrySet()) {
+                                    if (entry.getValue().contains(id)) {
+                                        String address = entry.getKey();
+                                        send(address, file_name, id, total_ids, true);
+                                    }
+                                }
+                            }
                     }
 
                     break;
