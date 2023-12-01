@@ -7,11 +7,13 @@ public class FS_Tracker {
 
     private Map<String, Map<String, List<Integer>>> fs_nodes;
     private int port;
+    private String address;
 
-    public FS_Tracker() {
+    public FS_Tracker(String address) {
 
         this.fs_nodes = new HashMap<>();
         this.port = 9090;
+        this.address = address;
     }
 
     private void registerNode(Track_Packet infos) {
@@ -52,7 +54,7 @@ public class FS_Tracker {
 
     private byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
 
-        String address = InetAddress.getLocalHost().getHostAddress();
+        String address = this.address;
         Track_Packet packet = new Track_Packet("LIST", address, node_list);
 
         byte[] packet_ready = packet.packUp();
@@ -140,8 +142,8 @@ public class FS_Tracker {
     }
 
     public static void main(String[] args) throws IOException { // porque IOException?!
-
-        FS_Tracker fs_Tracker = new FS_Tracker();
+        String address = args[0];
+        FS_Tracker fs_Tracker = new FS_Tracker(address);
         fs_Tracker.start();
     }
 }
