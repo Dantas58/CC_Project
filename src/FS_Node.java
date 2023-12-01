@@ -148,14 +148,30 @@ public class FS_Node {
 
             DatagramPacket packet_final = new DatagramPacket(packet_ready, packet_ready.length, address_final, 9090);
 
-            socket.send(packet_final);
+            boolean ackReceived = false;
+            while (!ackReceived) {
+                socket.send(packet_final);
+                byte[] buffer = new byte[1024];
+                DatagramPacket ackPacket = new DatagramPacket(buffer, buffer.length);
+                try {
+                    socket.setSoTimeout(1000); // Set timeout to 1 second
+                    socket.receive(ackPacket);
+                    // Assuming the ACK packet contains the string "ACK"
+                    String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
+                    if (ackMessage.equals("ACK")) {
+                        ackReceived = true;
+                    }
+                } catch (IOException e) {
+                    // Timeout - resend the packet
+                }
+            }
+
             socket.close();
 
         } catch (Exception e) {
             System.err.println("Error sending UDP packet: " + e.getMessage());
         }
     }
-
     private void saveBlock(Transfer_Packet packet) throws IOException { 
         String file_name = packet.getFileName();
         byte[] block_data = packet.getBlockData();
@@ -230,16 +246,34 @@ public class FS_Node {
 
         if (received_packet.getChecksum() == -1) {
             // This is a request packet
+            // Create and send an ACK packet
+            String ackMessage = "ACK";
+            byte[] ackData = ackMessage.getBytes();
+            DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, packet.getAddress(), packet.getPort());
+            DatagramSocket socket = new DatagramSocket();
+            socket.send(ackPacket);
+            socket.close();
+
             send(address, file_name, block_id, total_blocks, false);
+
         } else if (received_packet.getChecksum() == calcChecksum(received_packet.getBlockData())) {
+            String ackMessage = "ACK";
+            byte[] ackData = ackMessage.getBytes();
+            DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, packet.getAddress(), packet.getPort());
+            DatagramSocket socket = new DatagramSocket();
+            socket.send(ackPacket);
+            socket.close();
             // This is a data packet and the checksum is correct
             saveBlock(received_packet);
+            // Create and send an ACK packet
+            
         } else {
             // This is a data packet but the checksum is incorrect
             System.err.println("Checksum mismatch for block " + received_packet.getBlockId());
             send(address, file_name, block_id, total_blocks, true);
         }
     }
+    
 
     private void setupPeer() {
         try {
