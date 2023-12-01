@@ -4,7 +4,8 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
 import java.io.*;
 
@@ -25,6 +26,7 @@ public class FS_Node {
     private DatagramSocket udp_socket;
 
     private volatile boolean running = true;
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public FS_Node(int server_port, String server_address, String directory, String node_address) {
 
@@ -35,32 +37,6 @@ public class FS_Node {
         // tcp_socket = new Socket(server_address, server_port);
         // this.node_address = InetAddress.getLocalHost().getHostAddress(); // + ":" +
         // String.valueOf(TCP_Port);
-    }
-
-    public class FileBlock {
-
-        private Integer Id;
-        private byte[] data;
-
-        public FileBlock(Integer blockId, byte[] data) {
-            this.Id = blockId;
-            this.data = data;
-        }
-
-        public Integer getBlockId() {
-            return Id;
-        }
-
-        public byte[] getData() {
-            return data;
-        }
-    }
-
-    private FileBlock findBlock(List<FileBlock> blocks, int id) {
-        return blocks.stream()
-            .filter(block -> block.getBlockId().equals(id))
-            .findFirst()
-            .orElse(null);
     }
 
     public String getAddress() throws IOException {
@@ -121,7 +97,6 @@ public class FS_Node {
     private void exit() throws IOException {
 
         String address = getAddress();
-        running = false;
 
         // Use a placeholder as there will be no need to send actual file information
         Map<String, List<Integer>> placeHolder = new HashMap<>();
@@ -133,15 +108,18 @@ public class FS_Node {
         out.writeObject(packetReady);
         out.flush();
 
+        in.close();
+        out.close();
         tcp_socket.close();
 
         if (udp_socket != null && !udp_socket.isClosed()) {
             udp_socket.close();
         }
 
-        in.close();
-        out.close();
+        running = false;
+        executor.shutdown();
     }
+
     private void send(String address, String file_name, int block_id, int total_blocks, boolean is_request){
         try {
             DatagramSocket socket = new DatagramSocket();
@@ -199,7 +177,6 @@ public class FS_Node {
         this.files.get(file_name).add(block_id);
         updateBlocks();
     }
-
 
     public Map<String, List<Integer>> readFilesToMap(String directoryPath) {
         File directory = new File(directoryPath);
@@ -265,7 +242,6 @@ public class FS_Node {
     }
 
     private void setupPeer() {
-
         try {
             udp_socket = new DatagramSocket(9090);
             System.out.println("FS_Transfer Protocol: Listening on Port 9090;");
@@ -275,14 +251,14 @@ public class FS_Node {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     try {
                         udp_socket.receive(packet);
-                        new Thread(() -> {
+                        executor.submit(() -> {
                             try {
                                 handlePacket(packet);
                             } catch (IOException e) {
                                 System.err.println("Error handling received packet: " + e.getMessage());
                                 e.printStackTrace();
                             }
-                        }).start();
+                        });
                     } catch (IOException e) {
                         if(running)
                             System.err.println("Error receiving UDP packet: " + e.getMessage());
@@ -364,16 +340,22 @@ public class FS_Node {
                             for (int id = 0; id < total_ids; id++) {
                                 if(this.files.containsKey(file_name) && this.files.get(file_name).contains(id))
                                     continue;
-                                for (Map.Entry<String, List<Integer>> entry : final_packet.getFiles().entrySet()) {
-                                    if (entry.getValue().contains(id)) {
-                                        String address = entry.getKey();
-                                        try {
-                                            send(address, file_name, id, total_ids, true);
-                                        } catch (Exception e) {
-                                            System.err.println("Error sending block " + id + " of file " + file_name + ": " + e.getMessage());
+                                else{
+                                    int final_id = id;
+                                    executor.submit(() -> {
+                                        for (Map.Entry<String, List<Integer>> entry : final_packet.getFiles().entrySet()) {
+                                            if (entry.getValue().contains(final_id)) {
+                                                String address = entry.getKey();
+                                                try {
+                                                    send(address, file_name, final_id, total_ids, true);
+                                                } catch (Exception e) {
+                                                    System.err.println("Error sending block " + final_id + " of file " + file_name + ": " + e.getMessage());
+                                                }
+
+                                                break;
+                                            }
                                         }
-                                        break;
-                                    }
+                                    });
                                 }
                             }
                         }
