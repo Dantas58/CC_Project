@@ -6,6 +6,7 @@ import java.net.SocketException;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.io.*;
 
@@ -118,6 +119,39 @@ public class FS_Node {
 
         running = false;
         executor.shutdown();
+    }
+
+    public long pingNode(String address) throws IOException {
+
+        InetAddress inetAddress = InetAddress.getByName(address);
+        long startTime = System.currentTimeMillis();
+        if (inetAddress.isReachable(5000)) {
+            long endTime = System.currentTimeMillis();
+            return endTime - startTime;
+        } else {
+            throw new IOException("Host not reachable");
+        }
+    }
+
+    private String findBestNode(Map<String, List<Integer>> files, int id){
+
+        Map<String, Integer> filtered_addresses = files.entrySet().stream()
+            .filter(entry -> entry.getValue().contains(id))
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().size()));
+
+        for(String address: filtered_addresses.keySet()){
+            try {
+                long ping = pingNode(address);
+                filtered_addresses.put(address, (int) (ping + filtered_addresses.get(address)));
+            } catch (IOException e) {
+                System.err.println("Error pinging address " + address + ": " + e.getMessage());
+                filtered_addresses.put(address, Integer.MAX_VALUE);
+            }
+        }
+
+        return filtered_addresses.entrySet().stream()
+            .min(Map.Entry.comparingByValue()).get().getKey();
+
     }
 
     private void send(String address, String file_name, int block_id, int total_blocks, boolean is_request){
@@ -371,31 +405,28 @@ public class FS_Node {
                                 .max()
                                 .orElse(0);  // default value if no maximum is found
 
-                            for (int id = 0; id < total_ids; id++) {
-                                if(this.files.containsKey(file_name) && this.files.get(file_name).contains(id))
-                                    continue;
-                                else{
-                                    int final_id = id;
-                                    executor.submit(() -> {
-                                        for (Map.Entry<String, List<Integer>> entry : final_packet.getFiles().entrySet()) {
-                                            if (entry.getValue().contains(final_id)) {
-                                                String address = entry.getKey();
+                                for (int id = 0; id < total_ids; id++) {
+
+                                    if(this.files.containsKey(file_name) && this.files.get(file_name).contains(id))
+                                        continue;
+    
+                                    else{
+                                        int final_id = id;
+                                        executor.submit(() -> {
+    
+                                                String address = findBestNode(final_packet.getFiles(), final_id);
                                                 try {
                                                     send(address, file_name, final_id, total_ids, true);
                                                 } catch (Exception e) {
                                                     System.err.println("Error sending block " + final_id + " of file " + file_name + ": " + e.getMessage());
                                                 }
-
-                                                break;
-                                            }
-                                        }
-                                    });
+                                        });
+                                    }
                                 }
                             }
+    
+                            break;
                         }
-
-                        break;
-                    }
 
                     case "EXIT": {
 
