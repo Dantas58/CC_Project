@@ -3,6 +3,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.UnknownHostException;
+import java.net.NetworkInterface;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -16,9 +18,10 @@ public class FS_Node {
     private final String directory;
     private final String server_address;
     private final int server_port;
-    private String node_address;
+    private final String node_name;
 
     private Map<String, List<Integer>> files;
+    private Map<String,String> known_nodes = new HashMap<>();
 
     private ObjectInputStream in;
     private ObjectOutputStream out;
@@ -29,20 +32,58 @@ public class FS_Node {
     private volatile boolean running = true;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
-    public FS_Node(int server_port, String server_address, String directory, String node_address) {
-
+    public FS_Node(int server_port, String server_address, String directory) {
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        System.setProperty("sun.net.spi.nameservice.nameservers", "10.4.4.1");
+        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
         this.server_address = server_address;
         this.server_port = server_port;
         this.directory = directory;
-        this.node_address = node_address;
-        // tcp_socket = new Socket(server_address, server_port);
-        // this.node_address = InetAddress.getLocalHost().getHostAddress(); // + ":" +
-        // String.valueOf(TCP_Port);
+        try {
+            this.node_name = InetAddress.getByName(getLocalAddress()).getHostName();
+            System.out.println("Node name: " + node_name);
+        } catch (SocketException | UnknownHostException e) {
+            throw new RuntimeException("Error getting node name: " + e.getMessage());
+        }
+    }
+
+    private String getLocalAddress() throws SocketException {
+        Enumeration<NetworkInterface> iterNetwork = NetworkInterface.getNetworkInterfaces();
+        NetworkInterface network;
+        InetAddress address;
+
+        while (iterNetwork.hasMoreElements()) {
+            network = iterNetwork.nextElement();
+
+            if (!network.isUp())
+                continue;
+
+            if (network.isLoopback())
+                continue;
+
+            Enumeration<InetAddress> iterAddress = network.getInetAddresses();
+
+            while (iterAddress.hasMoreElements()) {
+                address = iterAddress.nextElement();
+
+                if (address.isAnyLocalAddress())
+                    continue;
+
+                if (address.isLoopbackAddress())
+                    continue;
+
+                if (address.isMulticastAddress())
+                    continue;
+
+                return address.getHostName();
+            }
+        }
+
+        throw new SocketException("No suitable network interface found");
     }
 
     public String getAddress() throws IOException {
-
-        return this.node_address;
+        return node_name;
     }
 
     private void register() throws IOException {
@@ -96,7 +137,6 @@ public class FS_Node {
     }
 
     private void exit() throws IOException {
-
         String address = getAddress();
 
         // Use a placeholder as there will be no need to send actual file information
@@ -123,7 +163,7 @@ public class FS_Node {
 
     public long pingNode(String address) throws IOException {
 
-        InetAddress inetAddress = InetAddress.getByName(address);
+        InetAddress inetAddress = InetAddress.getByName(this.known_nodes.get(address));
         long startTime = System.currentTimeMillis();
         if (inetAddress.isReachable(5000)) {
             long endTime = System.currentTimeMillis();
@@ -188,15 +228,13 @@ public class FS_Node {
                 byte[] buffer = new byte[1024];
                 DatagramPacket ackPacket = new DatagramPacket(buffer, buffer.length);
                 try {
-                    socket.setSoTimeout(1000); // Set timeout to 1 second
+                    socket.setSoTimeout(1000);
                     socket.receive(ackPacket);
-                    // Assuming the ACK packet contains the string "ACK"
                     String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
                     if (ackMessage.equals("ACK")) {
                         ackReceived = true;
                     }
                 } catch (IOException e) {
-                    // Timeout - resend the packet
                 }
             }
 
@@ -304,10 +342,22 @@ public class FS_Node {
         } else {
             // This is a data packet but the checksum is incorrect
             System.err.println("Checksum mismatch for block " + received_packet.getBlockId());
-            send(address, file_name, block_id, total_blocks, true);
+            //send(address, file_name, block_id, total_blocks, true); // O send é repetido se não enviarmos o ACK
         }
     }
     
+
+    private void resolveAndSaveNodes(Set<String> nodeNames) {
+        this.known_nodes.clear();
+        for (String nodeName : nodeNames) {
+            try {
+                String nodeAddress = InetAddress.getByName(nodeName).getHostAddress();
+                known_nodes.put(nodeName, nodeAddress);
+            } catch (UnknownHostException e) {
+                System.err.println("Error resolving DNS for node " + nodeName + ": " + e.getMessage());
+            }
+        }
+    }
 
     private void setupPeer() {
         try {
@@ -404,7 +454,7 @@ public class FS_Node {
                                 .mapToInt(List::size)
                                 .max()
                                 .orElse(0);  // default value if no maximum is found
-
+                            resolveAndSaveNodes(final_packet.getFiles().keySet());
                                 for (int id = 0; id < total_ids; id++) {
 
                                     if(this.files.containsKey(file_name) && this.files.get(file_name).contains(id))
@@ -444,7 +494,7 @@ public class FS_Node {
 
     public static void main(String[] args) throws IOException, ClassNotFoundException {
 
-        if (args.length < 4) {
+        if (args.length < 3) {
             System.out.println("Not enough arguments");
             return;
         }
@@ -452,9 +502,8 @@ public class FS_Node {
         String directory = args[0];
         String server_address = args[1];
         int server_port = Integer.parseInt(args[2]);
-        String node_address = args[3];
 
-        FS_Node node = new FS_Node(server_port, server_address, directory,node_address);
+        FS_Node node = new FS_Node(server_port, server_address, directory);
 
         node.setupTrackerConnection();
         node.setupPeer();

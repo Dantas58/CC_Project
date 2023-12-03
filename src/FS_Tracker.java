@@ -7,13 +7,17 @@ public class FS_Tracker {
 
     private Map<String, Map<String, List<Integer>>> fs_nodes;
     private int port;
-    private String address;
+    private String local_address;
 
-    public FS_Tracker(String address) {
+    public FS_Tracker() {
 
         this.fs_nodes = new HashMap<>();
         this.port = 9090;
-        this.address = address;
+        try {
+            this.local_address = InetAddress.getByName(getLocalAddress()).getHostName();
+        } catch (SocketException | UnknownHostException e) {
+            e.printStackTrace();
+        };
     }
 
     private void registerNode(Track_Packet infos) {
@@ -54,7 +58,7 @@ public class FS_Tracker {
 
     private byte[] sendNodes(Map<String, List<Integer>> node_list) throws IOException {
 
-        String address = this.address;
+        String address = this.local_address;
         Track_Packet packet = new Track_Packet("LIST", address, node_list);
 
         byte[] packet_ready = packet.packUp();
@@ -71,6 +75,42 @@ public class FS_Tracker {
             new ServerThread(clientSocket).start();
         }
     }
+
+    private String getLocalAddress() throws SocketException {
+        Enumeration<NetworkInterface> iterNetwork = NetworkInterface.getNetworkInterfaces();
+        NetworkInterface network;
+        InetAddress address;
+
+        while (iterNetwork.hasMoreElements()) {
+            network = iterNetwork.nextElement();
+
+            if (!network.isUp())
+                continue;
+
+            if (network.isLoopback())
+                continue;
+
+            Enumeration<InetAddress> iterAddress = network.getInetAddresses();
+
+            while (iterAddress.hasMoreElements()) {
+                address = iterAddress.nextElement();
+
+                if (address.isAnyLocalAddress())
+                    continue;
+
+                if (address.isLoopbackAddress())
+                    continue;
+
+                if (address.isMulticastAddress())
+                    continue;
+
+                return address.getHostName();
+            }
+        }
+
+        throw new SocketException("No suitable network interface found");
+    }
+
 
     class ServerThread extends Thread {
 
@@ -142,8 +182,7 @@ public class FS_Tracker {
     }
 
     public static void main(String[] args) throws IOException { // porque IOException?!
-        String address = args[0];
-        FS_Tracker fs_Tracker = new FS_Tracker(address);
+        FS_Tracker fs_Tracker = new FS_Tracker();
         fs_Tracker.start();
     }
 }
