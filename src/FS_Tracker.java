@@ -37,10 +37,8 @@ public class FS_Tracker {
         if (fs_nodes.containsKey(node_address)) {
 
             fs_nodes.put(node_address, files);
-            System.out.println("Node " + node_address + " Updated;");
 
         } else {
-            System.out.println("Specified Node (" + node_address + ") does not exist;");
         }
     }
 
@@ -67,12 +65,13 @@ public class FS_Tracker {
 
     private void start() throws IOException {
 
-        ServerSocket serverSocket = new ServerSocket(port);
-        System.out.println("FS_Tracker is running. Listening on port " + port);
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            System.out.println("FS_Tracker is running. Listening on port " + port);
 
-        while (true) {
-            Socket clientSocket = serverSocket.accept();
-            new ServerThread(clientSocket).start();
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                new ServerThread(clientSocket).start();
+            }
         }
     }
 
@@ -149,7 +148,6 @@ public class FS_Tracker {
 
                         updateNode(final_packet);
                         for (String key : final_packet.getFiles().keySet()) {
-                            System.out.println(key);
                         }
                         out.flush();
                     }

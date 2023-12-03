@@ -5,9 +5,11 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.net.NetworkInterface;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.io.*;
@@ -22,6 +24,8 @@ public class FS_Node {
 
     private Map<String, List<Integer>> files;
     private Map<String,String> known_nodes = new HashMap<>();
+
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     private ObjectInputStream in;
     private ObjectOutputStream out;
@@ -46,6 +50,16 @@ public class FS_Node {
             throw new RuntimeException("Error getting node name: " + e.getMessage());
         }
     }
+
+    public void startUpdateBlocks() {
+        final Runnable updater = new Runnable() {
+            public void run() { 
+                try {updateBlocks(); } catch (IOException e) {System.err.println("Error updating blocks: " + e.getMessage());}
+            }
+        };
+        scheduler.scheduleAtFixedRate(updater, 0, 3, TimeUnit.SECONDS);
+    }
+
 
     private String getLocalAddress() throws SocketException {
         Enumeration<NetworkInterface> iterNetwork = NetworkInterface.getNetworkInterfaces();
@@ -159,6 +173,7 @@ public class FS_Node {
 
         running = false;
         executor.shutdown();
+        scheduler.shutdown();
     }
 
     public long pingNode(String address) throws IOException {
@@ -263,7 +278,6 @@ public class FS_Node {
             this.files.put(file_name, new ArrayList<>());
         }
         this.files.get(file_name).add(block_id);
-        updateBlocks();
     }
 
     public Map<String, List<Integer>> readFilesToMap(String directoryPath) {
@@ -507,6 +521,7 @@ public class FS_Node {
 
         node.setupTrackerConnection();
         node.setupPeer();
+        node.startUpdateBlocks();
         node.commandHandler();
     }
 }
