@@ -57,7 +57,7 @@ public class FS_Node {
                 try {updateBlocks(); } catch (IOException e) {System.err.println("Error updating blocks: " + e.getMessage());}
             }
         };
-        scheduler.scheduleAtFixedRate(updater, 0, 3, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(updater, 0, 500, TimeUnit.MILLISECONDS);
     }
 
 
@@ -204,23 +204,24 @@ public class FS_Node {
             }
         }
 
+        if (filtered_addresses.isEmpty()) {
+            return null;
+        }
+
         return filtered_addresses.entrySet().stream()
             .min(Map.Entry.comparingByValue()).get().getKey();
 
     }
-
-    private void send(String address, String file_name, int block_id, int total_blocks, boolean is_request){
+    private boolean send(String address, String file_name, int block_id, int total_blocks, boolean is_request){
         try {
             DatagramSocket socket = new DatagramSocket();
             InetAddress address_final = InetAddress.getByName(address);
             Transfer_Packet packet;
 
             if(is_request){
-                // It's a request == no need for block data to be sent + checksum -1 to represent a request 
                 packet = new Transfer_Packet(file_name, block_id, new byte[0], total_blocks, -1);
             }
             else{
-                System.err.println("Sending block " + block_id + " of file " + file_name);
                 RandomAccessFile raf = new RandomAccessFile(new File(directory, file_name), "r");
                 raf.seek(block_id * BLOCK_SIZE);
                 byte[] block_data = new byte[BLOCK_SIZE];
@@ -238,7 +239,9 @@ public class FS_Node {
             DatagramPacket packet_final = new DatagramPacket(packet_ready, packet_ready.length, address_final, 9090);
 
             boolean ackReceived = false;
-            while (!ackReceived) {
+            int tries = 0;
+            while (!ackReceived && tries < 5) {
+                tries++;
                 socket.send(packet_final);
                 byte[] buffer = new byte[1024];
                 DatagramPacket ackPacket = new DatagramPacket(buffer, buffer.length);
@@ -255,10 +258,14 @@ public class FS_Node {
 
             socket.close();
 
+            return ackReceived;
+
         } catch (Exception e) {
             System.err.println("Error sending UDP packet: " + e.getMessage());
+            return false;
         }
     }
+    
     private void saveBlock(Transfer_Packet packet) throws IOException { 
         String file_name = packet.getFileName();
         byte[] block_data = packet.getBlockData();
@@ -293,7 +300,7 @@ public class FS_Node {
 
                     try (FileInputStream fileInputStream = new FileInputStream(file)) {
                         int blockId = 0;
-                        int bufferSize = 100;
+                        int bufferSize = BLOCK_SIZE;
                         byte[] buffer = new byte[bufferSize];
 
                         List<Integer> blockIds = new ArrayList<>();
@@ -480,9 +487,17 @@ public class FS_Node {
     
                                                 String address = findBestNode(final_packet.getFiles(), final_id);
                                                 try {
-                                                    send(address, file_name, final_id, total_ids, true);
+                                                    Map <String, List<Integer>> cena = new HashMap<>();
+                                                    while (send(address, file_name, final_id, total_ids, true) == false) {
+                                                        if (!InetAddress.getByName(address).isReachable(5000)) {
+                                                            cena.remove(address);
+                                                        }
+                                                        if ((address = findBestNode(cena, final_id)) == null){
+                                                            break;
+                                                        }
+                                                    }
                                                 } catch (Exception e) {
-                                                    System.err.println("Error sending block " + final_id + " of file " + file_name + ": " + e.getMessage());
+                                                    System.err.println("Error requesting block " + final_id + " of file " + file_name + ": " + e.getMessage());
                                                 }
                                         });
                                     }
