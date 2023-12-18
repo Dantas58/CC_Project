@@ -223,6 +223,7 @@ public class FS_Node {
             }
             else{
                 RandomAccessFile raf = new RandomAccessFile(new File(directory, file_name), "r");
+                System.out.println("Sending block " + block_id + " of file " + file_name);
                 raf.seek(block_id * BLOCK_SIZE);
                 byte[] block_data = new byte[BLOCK_SIZE];
                 int bytesRead = raf.read(block_data);
@@ -246,7 +247,7 @@ public class FS_Node {
                 byte[] buffer = new byte[1024];
                 DatagramPacket ackPacket = new DatagramPacket(buffer, buffer.length);
                 try {
-                    socket.setSoTimeout(1000);
+                    socket.setSoTimeout(2000);
                     socket.receive(ackPacket);
                     String ackMessage = new String(ackPacket.getData(), 0, ackPacket.getLength());
                     if (ackMessage.equals("ACK")) {
@@ -272,6 +273,7 @@ public class FS_Node {
         int block_id = packet.getBlockId();
 
         if (this.files.containsKey(file_name) && this.files.get(file_name).contains(block_id)) {
+            System.out.println("Block " + block_id + " of file " + file_name + " already received");
             return;
         }
 
@@ -284,6 +286,7 @@ public class FS_Node {
             this.files.put(file_name, new ArrayList<>());
         }
         this.files.get(file_name).add(block_id);
+        System.out.println("Block " + block_id + " of file " + file_name + " received and saved");
     }
 
     public Map<String, List<Integer>> readFilesToMap(String directoryPath) {
