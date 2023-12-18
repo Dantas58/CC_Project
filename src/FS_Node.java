@@ -16,7 +16,7 @@ import java.io.*;
 
 public class FS_Node {
 
-    private static final int BLOCK_SIZE = 1000;
+    private static final int BLOCK_SIZE = 100;
     private final String directory;
     private final String server_address;
     private final int server_port;
@@ -272,7 +272,6 @@ public class FS_Node {
         int block_id = packet.getBlockId();
 
         if (this.files.containsKey(file_name) && this.files.get(file_name).contains(block_id)) {
-            System.err.println("Block " + block_id + " of file " + file_name + " already exists");
             return;
         }
 
