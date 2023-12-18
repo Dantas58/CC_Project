@@ -16,7 +16,7 @@ import java.io.*;
 
 public class FS_Node {
 
-    private static final int BLOCK_SIZE = 100;
+    private static final int BLOCK_SIZE = 1000;
     private final String directory;
     private final String server_address;
     private final int server_port;
@@ -487,12 +487,8 @@ public class FS_Node {
     
                                                 String address = findBestNode(final_packet.getFiles(), final_id);
                                                 try {
-                                                    Map <String, List<Integer>> cena = new HashMap<>();
                                                     while (send(address, file_name, final_id, total_ids, true) == false) {
-                                                        if (!InetAddress.getByName(address).isReachable(5000)) {
-                                                            cena.remove(address);
-                                                        }
-                                                        if ((address = findBestNode(cena, final_id)) == null){
+                                                        if ((address = findBestNode(final_packet.getFiles(), final_id)) == null || this.files.containsKey(file_name) && this.files.get(file_name).contains(final_id)){
                                                             break;
                                                         }
                                                     }
